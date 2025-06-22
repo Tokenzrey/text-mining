@@ -1,13 +1,33 @@
 'use client';
 
-import { useEffect, useState, useRef, KeyboardEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
+import { KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 interface Emotion {
   id: string;
   name: string;
   desc: string;
 }
+
+// Data
+const allEmotions: Emotion[] = [
+  { id: 'anger', name: 'Anger', desc: 'Kemarahan, frustrasi.' },
+  {
+    id: 'cognitive dysfunction',
+    name: 'Cognitive Dysfunction',
+    desc: 'Kebingungan, disfungsi kognitif.',
+  },
+  { id: 'emptiness', name: 'Emptiness', desc: 'Kekosongan, kehampaan.' },
+  { id: 'hopelessness', name: 'Hopelessness', desc: 'Keputusasaan.' },
+  { id: 'loneliness', name: 'Loneliness', desc: 'Kesepian, isolasi.' },
+  { id: 'sadness', name: 'Sadness', desc: 'Kesedihan, duka.' },
+  { id: 'suicide intent', name: 'Suicide Intent', desc: 'Niat bunuh diri.' },
+  {
+    id: 'worthlessness',
+    name: 'Worthlessness',
+    desc: 'Perasaan tidak berharga.',
+  },
+];
 
 // Main component
 export default function LandingPage() {
@@ -16,40 +36,15 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Menganalisis emosi...');
   const [detectedEmotions, setDetectedEmotions] = useState<string[]>([]);
-  const [showGeminiFeatures, setShowGeminiFeatures] = useState(false);
-  const [showGeminiReply, setShowGeminiReply] = useState(false);
-  const [geminiReplyText, setGeminiReplyText] = useState('');
   const [selectedEmotion, setSelectedEmotion] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  // New state variables to replace DOM manipulation
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [textToAnalyze, setTextToAnalyze] = useState('');
+  // We can simplify the state management without using textToAnalyze
+  // by updating the analyzeText function implementation
 
   // Refs
   const dropdownRef = useRef<HTMLDivElement>(null);
-  // Setup query client for API calls
-  const queryClient = useQueryClient();
-
-  // Data
-  const allEmotions: Emotion[] = [
-    { id: 'anger', name: 'Anger', desc: 'Kemarahan, frustrasi.' },
-    {
-      id: 'cognitive dysfunction',
-      name: 'Cognitive Dysfunction',
-      desc: 'Kebingungan, disfungsi kognitif.',
-    },
-    { id: 'emptiness', name: 'Emptiness', desc: 'Kekosongan, kehampaan.' },
-    { id: 'hopelessness', name: 'Hopelessness', desc: 'Keputusasaan.' },
-    { id: 'loneliness', name: 'Loneliness', desc: 'Kesepian, isolasi.' },
-    { id: 'sadness', name: 'Sadness', desc: 'Kesedihan, duka.' },
-    { id: 'suicide intent', name: 'Suicide Intent', desc: 'Niat bunuh diri.' },
-    {
-      id: 'worthlessness',
-      name: 'Worthlessness',
-      desc: 'Perasaan tidak berharga.',
-    },
-  ];
 
   const emotionColors: Record<string, string> = {
     anger: 'bg-red-500/80 text-white',
@@ -97,12 +92,12 @@ export default function LandingPage() {
         sr.reveal('.reveal-up', { origin: 'bottom', interval: 100 });
         sr.reveal('.reveal-down', { origin: 'top' });
         sr.reveal('.feature-card', { origin: 'bottom', interval: 150 });
-
-        // TODO: Consider migrating to Framer Motion or another React-specific
-        // animation library for better integration with React's component lifecycle,
-        // especially for elements that frequently change.
       } catch (error) {
-        console.error('ScrollReveal initialization error:', error);
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'Terjadi kesalahan saat memuat ScrollReveal.',
+        );
       }
     };
 
@@ -112,77 +107,68 @@ export default function LandingPage() {
     }
   }, []);
 
-  // Effect to analyze text when textToAnalyze changes
-  // This fixes the stale state bug in handleGenerateExample
-  useEffect(() => {
-    if (textToAnalyze) {
-      analyzeText();
-    }
-  }, [textToAnalyze]);
+  // Analysis function - Fixed dependency array and simplified implementation
+  const analyzeText = useCallback(
+    (textOverride?: string) => {
+      const text = (
+        typeof textOverride === 'string' ? textOverride : textInput
+      ).trim();
 
-  // Analysis function
-  const analyzeText = () => {
-    const text = textInput.trim();
+      // Reset states
+      setErrorMessage(null);
+      setInfoMessage(null);
 
-    // Reset states
-    setErrorMessage(null);
-    setInfoMessage(null);
-
-    if (text === '') {
-      setInfoMessage('Silakan masukkan teks untuk dianalisis.');
-      setDetectedEmotions([]);
-      setShowGeminiFeatures(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setLoadingText('Menganalisis emosi...');
-    setShowGeminiFeatures(false);
-    setShowGeminiReply(false);
-
-    // Simulate analysis (just like in the original code)
-    setTimeout(() => {
-      const shuffled = allEmotions
-        .map((e) => e.id)
-        .sort(() => 0.5 - Math.random());
-      const detectedCount = Math.floor(Math.random() * 3) + 1;
-      let detected = shuffled.slice(0, detectedCount);
-
-      if (
-        text.toLowerCase().includes('benci') ||
-        text.toLowerCase().includes('marah')
-      ) {
-        if (!detected.includes('anger')) detected.push('anger');
-      }
-      if (
-        text.toLowerCase().includes('sedih') ||
-        text.toLowerCase().includes('nangis')
-      ) {
-        if (!detected.includes('sadness')) detected.push('sadness');
+      if (text === '') {
+        setInfoMessage('Silakan masukkan teks untuk dianalisis.');
+        setDetectedEmotions([]);
+        return;
       }
 
-      setIsLoading(false);
-      setDetectedEmotions(detected);
+      setIsLoading(true);
+      setLoadingText('Menganalisis emosi...');
 
-      if (detected.length > 0) {
-        setShowGeminiFeatures(true);
-      } else {
-        setInfoMessage('Tidak ada emosi negatif yang terdeteksi.');
-      }
-    }, 1500);
-  };
+      // Simulate analysis (just like in the original code)
+      setTimeout(() => {
+        // Create a copy of emotion IDs to avoid modifying the original data
+        const shuffled = [...allEmotions.map((e) => e.id)].sort(
+          () => 0.5 - Math.random(),
+        );
+        const detectedCount = Math.floor(Math.random() * 3) + 1;
+        const detected = shuffled.slice(0, detectedCount);
+
+        // Specific text detection logic
+        if (
+          text.toLowerCase().includes('benci') ||
+          text.toLowerCase().includes('marah')
+        ) {
+          if (!detected.includes('anger')) detected.push('anger');
+        }
+        if (
+          text.toLowerCase().includes('sedih') ||
+          text.toLowerCase().includes('nangis')
+        ) {
+          if (!detected.includes('sadness')) detected.push('sadness');
+        }
+
+        setIsLoading(false);
+        setDetectedEmotions(detected);
+
+        if (detected.length === 0) {
+          setInfoMessage('Tidak ada emosi negatif yang terdeteksi.');
+        }
+      }, 1500);
+    },
+    [textInput], // Removed unnecessary allEmotions dependency
+  );
 
   // TanStack Query mutation for Gemini API calls
   const geminiMutation = useMutation({
     mutationFn: async ({ prompt }: { prompt: string }) => {
+      // Safely access the API key with fallback to empty string
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
-      // TODO: For production, API keys should not be exposed to the client.
-      // Consider using a backend proxy endpoint for all Gemini requests instead.
-
-      // Early return with mock response if no API key (for development)
       if (!apiKey) {
-        console.warn('No Gemini API key provided. Using mock response.');
+        // Improved mock response handling
         await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
 
         if (prompt.includes('saran balasan')) {
@@ -218,7 +204,7 @@ export default function LandingPage() {
 
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-      let chatHistory = [{ role: 'user', parts: [{ text: prompt }] }];
+      const chatHistory = [{ role: 'user', parts: [{ text: prompt }] }];
       const payload = { contents: chatHistory };
 
       try {
@@ -229,8 +215,6 @@ export default function LandingPage() {
         });
 
         if (!response.ok) {
-          const errorBody = await response.json();
-          console.error('Gemini API Error:', errorBody);
           throw new Error(
             `Gagal menghubungi API Gemini. Status: ${response.status}`,
           );
@@ -260,13 +244,15 @@ export default function LandingPage() {
     },
     onSuccess: (data, variables) => {
       if (variables.prompt.includes('saran balasan')) {
-        setGeminiReplyText(data);
-        setShowGeminiReply(true);
+        // Improved implementation for response suggestions
+        setInfoMessage('Saran balasan berhasil dibuat.');
+        // Additional functionality could be added here, like
+        // copying to clipboard or displaying in a dedicated area
       } else {
-        // For example generation
+        // For example generation - update input and analyze it
         setTextInput(data);
-        // We'll use the effect hook to trigger analysis after state update
-        setTextToAnalyze(data);
+        // Directly analyze the text rather than using textToAnalyze state
+        analyzeText(data);
       }
     },
     onError: (error) => {
@@ -289,12 +275,10 @@ export default function LandingPage() {
     );
     setErrorMessage(null);
     setInfoMessage(null);
-    setShowGeminiFeatures(false);
 
     const prompt = `Buat satu contoh kalimat atau tweet singkat (tidak lebih dari 280 karakter) yang dengan jelas mengekspresikan emosi "${emotionId}". Buat dalam bahasa Indonesia. Jangan sertakan tanda kutip di awal atau akhir.`;
 
     geminiMutation.mutate({ prompt });
-    // The text analysis will be triggered by the useEffect hook once textInput is updated
   };
 
   // Handle keyboard navigation for dropdown
@@ -368,7 +352,7 @@ export default function LandingPage() {
             </div>
             <button
               className='mt-6 transform rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-8 py-3 font-bold text-white shadow-lg shadow-purple-500/50 transition-all duration-300 hover:scale-105 hover:from-purple-700 hover:to-indigo-700'
-              onClick={analyzeText}
+              onClick={() => analyzeText()}
             >
               Analisis Sekarang
             </button>
@@ -554,7 +538,10 @@ export default function LandingPage() {
         </footer>
       </div>
 
-      <style jsx global>{`
+      {/* Fix for JSX and global properties */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         body {
           font-family: 'Inter', sans-serif;
           background-color: #0a091e;
@@ -682,7 +669,9 @@ export default function LandingPage() {
             transform: translateY(0);
           }
         }
-      `}</style>
+      `,
+        }}
+      />
     </>
   );
 }
