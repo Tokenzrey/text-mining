@@ -9,11 +9,20 @@ interface Emotion {
   desc: string;
 }
 
+// API response interface
+interface PredictionResponse {
+  request_id: string;
+  emotions: string[];
+  probabilities: Record<string, number>;
+  processing_time_ms: number;
+  version: string;
+}
+
 // Data
 const allEmotions: Emotion[] = [
   { id: 'anger', name: 'Anger', desc: 'Kemarahan, frustrasi.' },
   {
-    id: 'cognitive dysfunction',
+    id: 'brain dysfunction (forget)',
     name: 'Cognitive Dysfunction',
     desc: 'Kebingungan, disfungsi kognitif.',
   },
@@ -29,6 +38,9 @@ const allEmotions: Emotion[] = [
   },
 ];
 
+// API URL - Can be configured based on environment
+const API_URL = 'http://localhost:8000';
+
 // Main component
 export default function LandingPage() {
   // State management
@@ -36,12 +48,13 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Menganalisis emosi...');
   const [detectedEmotions, setDetectedEmotions] = useState<string[]>([]);
+  const [probabilities, setProbabilities] = useState<Record<string, number>>(
+    {},
+  );
   const [selectedEmotion, setSelectedEmotion] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  // We can simplify the state management without using textToAnalyze
-  // by updating the analyzeText function implementation
 
   // Refs
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -53,7 +66,7 @@ export default function LandingPage() {
     emptiness: 'bg-gray-500/80 text-white',
     hopelessness: 'bg-indigo-700/80 text-white',
     worthlessness: 'bg-purple-700/80 text-white',
-    'cognitive dysfunction': 'bg-yellow-500/80 text-black',
+    'brain dysfunction (forget)': 'bg-yellow-500/80 text-black',
     'suicide intent': 'bg-black/80 text-red-400 border border-red-400',
   };
 
@@ -107,7 +120,57 @@ export default function LandingPage() {
     }
   }, []);
 
-  // Analysis function - Fixed dependency array and simplified implementation
+  // API Mutation for text analysis
+  const analysisMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const response = await fetch(`${API_URL}/predict`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: text,
+          threshold: 0.5,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.detail || 'Terjadi kesalahan saat analisis teks',
+        );
+      }
+
+      return (await response.json()) as PredictionResponse;
+    },
+    onMutate: () => {
+      setIsLoading(true);
+      setLoadingText('Menganalisis emosi...');
+      setErrorMessage(null);
+      setInfoMessage(null);
+    },
+    onSuccess: (data) => {
+      setDetectedEmotions(data.emotions);
+      setProbabilities(data.probabilities);
+
+      if (data.emotions.length === 0) {
+        setInfoMessage('Tidak ada emosi negatif yang terdeteksi.');
+      }
+    },
+    onError: (error) => {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'Terjadi kesalahan saat menganalisis teks.',
+      );
+      setDetectedEmotions([]);
+    },
+    onSettled: () => {
+      setIsLoading(false);
+    },
+  });
+
+  // Analysis function - integrates with backend API
   const analyzeText = useCallback(
     (textOverride?: string) => {
       const text = (
@@ -124,41 +187,10 @@ export default function LandingPage() {
         return;
       }
 
-      setIsLoading(true);
-      setLoadingText('Menganalisis emosi...');
-
-      // Simulate analysis (just like in the original code)
-      setTimeout(() => {
-        // Create a copy of emotion IDs to avoid modifying the original data
-        const shuffled = [...allEmotions.map((e) => e.id)].sort(
-          () => 0.5 - Math.random(),
-        );
-        const detectedCount = Math.floor(Math.random() * 3) + 1;
-        const detected = shuffled.slice(0, detectedCount);
-
-        // Specific text detection logic
-        if (
-          text.toLowerCase().includes('benci') ||
-          text.toLowerCase().includes('marah')
-        ) {
-          if (!detected.includes('anger')) detected.push('anger');
-        }
-        if (
-          text.toLowerCase().includes('sedih') ||
-          text.toLowerCase().includes('nangis')
-        ) {
-          if (!detected.includes('sadness')) detected.push('sadness');
-        }
-
-        setIsLoading(false);
-        setDetectedEmotions(detected);
-
-        if (detected.length === 0) {
-          setInfoMessage('Tidak ada emosi negatif yang terdeteksi.');
-        }
-      }, 1500);
+      // Call the API through the mutation
+      analysisMutation.mutate(text);
     },
-    [textInput], // Removed unnecessary allEmotions dependency
+    [textInput, analysisMutation],
   );
 
   // TanStack Query mutation for Gemini API calls
@@ -188,7 +220,7 @@ export default function LandingPage() {
               'Sudah berkali-kali mencoba, tapi tetap gagal. Sepertinya tidak ada jalan keluar dari situasi ini.',
             worthlessness:
               'Apa gunanya semua usaha ini? Tanpa diriku pun, semua akan tetap berjalan dengan baik.',
-            'cognitive dysfunction':
+            'brain dysfunction (forget)':
               'Saya tidak bisa fokus akhir-akhir ini... pikiran saya terpecah-pecah, sulit mengingat hal sederhana yang biasanya mudah.',
             'suicide intent':
               'Rasanya tidak ada gunanya melanjutkan hidup seperti ini. Mungkin semua akan lebih baik jika aku tidak ada.',
@@ -351,10 +383,11 @@ export default function LandingPage() {
               ></textarea>
             </div>
             <button
-              className='mt-6 transform rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-8 py-3 font-bold text-white shadow-lg shadow-purple-500/50 transition-all duration-300 hover:scale-105 hover:from-purple-700 hover:to-indigo-700'
+              className='mt-6 transform rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-8 py-3 font-bold text-white shadow-lg shadow-purple-500/50 transition-all duration-300 hover:scale-105 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50'
               onClick={() => analyzeText()}
+              disabled={isLoading}
             >
-              Analisis Sekarang
+              {isLoading ? 'Menganalisis...' : 'Analisis Sekarang'}
             </button>
           </div>
 
@@ -387,25 +420,38 @@ export default function LandingPage() {
               </div>
             ) : (
               <>
-                {errorMessage && <p className='text-red-400'>{errorMessage}</p>}
+                {errorMessage && (
+                  <p className='mb-4 text-red-400'>{errorMessage}</p>
+                )}
 
                 {infoMessage && (
-                  <p className='text-yellow-400'>{infoMessage}</p>
+                  <p className='mb-4 text-yellow-400'>{infoMessage}</p>
                 )}
 
                 {/* Display detected emotions */}
-                <div className='flex flex-wrap items-center justify-center'>
-                  {detectedEmotions.map((emotion) => (
-                    <div
-                      key={emotion}
-                      className={`emotion-tag ${emotionColors[emotion] || 'bg-gray-400'}`}
-                      role='status'
-                      aria-label={`Detected emotion: ${allEmotions.find((e) => e.id === emotion)?.name || emotion}`}
-                    >
-                      {allEmotions.find((e) => e.id === emotion)?.name}
+                {detectedEmotions.length > 0 && (
+                  <>
+                    <h3 className='mb-3 text-xl font-bold text-white'>
+                      Emosi Terdeteksi:
+                    </h3>
+                    <div className='flex flex-wrap items-center justify-center'>
+                      {detectedEmotions.map((emotion) => (
+                        <div
+                          key={emotion}
+                          className={`emotion-tag ${emotionColors[emotion] || 'bg-gray-400'}`}
+                          role='status'
+                          aria-label={`Detected emotion: ${allEmotions.find((e) => e.id === emotion)?.name || emotion}`}
+                        >
+                          {allEmotions.find((e) => e.id === emotion)?.name ||
+                            emotion}
+                          {probabilities && probabilities[emotion]
+                            ? ` (${Math.round(probabilities[emotion] * 100)}%)`
+                            : ''}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -486,7 +532,7 @@ export default function LandingPage() {
               </div>
 
               <button
-                className='w-full transform rounded-full bg-gradient-to-r from-pink-500 to-orange-400 px-8 py-3 font-bold text-white transition-all duration-300 hover:scale-105 hover:from-pink-600 hover:to-orange-500 sm:w-auto'
+                className='w-full transform rounded-full bg-gradient-to-r from-pink-500 to-orange-400 px-8 py-3 font-bold text-white transition-all duration-300 hover:scale-105 hover:from-pink-600 hover:to-orange-500 disabled:opacity-50 sm:w-auto'
                 onClick={() => {
                   if (selectedEmotion) {
                     handleGenerateExample(selectedEmotion);
