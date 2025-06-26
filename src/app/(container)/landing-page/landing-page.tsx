@@ -308,7 +308,7 @@ export default function LandingPage() {
     setErrorMessage(null);
     setInfoMessage(null);
 
-    const prompt = `Buat satu contoh kalimat atau tweet singkat (tidak lebih dari 280 karakter) yang dengan jelas mengekspresikan emosi "${emotionId}". Buat dalam bahasa Indonesia. Jangan sertakan tanda kutip di awal atau akhir.`;
+    const prompt = `Create one example sentence or short tweet (no more than 280 characters) that clearly expresses the emotion "${emotionId}". Write it in English. Do not include quotation marks at the beginning or end.`;
 
     geminiMutation.mutate({ prompt });
   };
